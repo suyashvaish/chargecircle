@@ -1,0 +1,16 @@
+# LOCAL DEVELOPMENT database only (PostgreSQL + PostGIS), bound to localhost. Throwaway credentials.
+#   docker compose -f docker/docker-compose.dev.yml up -d
+#   DATABASE_URL=postgresql+psycopg2://chargecircle:devpassword@127.0.0.1:5432/chargecircle_dev
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    environment:
+      POSTGRES_USER: chargecircle
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: chargecircle_dev
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - dev_pg:/var/lib/postgresql/data
+volumes:
+  dev_pg:

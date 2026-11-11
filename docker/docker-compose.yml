@@ -1,0 +1,58 @@
+# PRODUCTION-style stack. Secrets come from ../.env.production (not committed).
+#   cp ../.env.production.example ../.env.production   # then edit
+#   docker compose --env-file ../.env.production -f docker-compose.yml up -d --build
+# TLS: terminate HTTPS in front of this stack (reverse proxy / load balancer); see DEPLOYMENT.md.
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    restart: always
+    environment:
+      POSTGRES_USER: chargecircle
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: chargecircle_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chargecircle -d chargecircle_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build: { context: .., dockerfile: docker/Dockerfile.backend }
+    env_file: ../.env.production
+    depends_on: { db: { condition: service_healthy } }
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  backend:
+    build: { context: .., dockerfile: docker/Dockerfile.backend }
+    restart: always
+    env_file: ../.env.production
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    ports:
+      - "127.0.0.1:8000:8000"   # expose only to the reverse proxy on this host
+    volumes:
+      - uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL in .env.production}
+    restart: always
+    depends_on: [backend]
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  postgres_data:
+  uploads:
