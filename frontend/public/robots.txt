@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /bookings
+Disallow: /checkout
+Disallow: /auth
+Disallow: /driver
+Disallow: /host
+
+Sitemap: https://chargecircle-pi.vercel.app/sitemap.xml
