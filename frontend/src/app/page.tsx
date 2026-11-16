@@ -2,343 +2,337 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Zap,
   MapPin,
-  Search,
-  Navigation,
-  ShieldCheck,
   Home,
-  CheckCircle,
-  Clock,
+  CalendarCheck,
+  ShieldCheck,
+  Wallet,
   ArrowRight,
-  BatteryCharging,
-  DollarSign,
-  TrendingUp,
-  Award,
+  Gauge,
+  Activity,
+  Radio,
 } from "lucide-react";
 import { apiRequest } from "@/lib/api";
 import { PublicStation, HomeListing } from "@/types";
-import { StatusBadge } from "@/components/StatusBadge";
 import dynamic from "next/dynamic";
 
-// Dynamically import MapView to prevent SSR issues with Leaflet
-const MapView = dynamic(() => import("@/components/MapView").then((m) => m.MapView), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-[400px] bg-slate-100 animate-pulse rounded-2xl flex items-center justify-center text-slate-400">
-      Loading interactive map preview...
-    </div>
-  ),
-});
+const MapView = dynamic(
+  () => import("@/components/MapView").then((m) => m.MapView),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full min-h-[480px] bg-slate-100 animate-pulse rounded-2xl flex items-center justify-center text-slate-400 text-sm">
+        Loading interactive map engine...
+      </div>
+    ),
+  }
+);
+
+const POPULAR_CITIES = [
+  { name: "Bengaluru", lat: 12.9716, lng: 77.5946 },
+  { name: "Mumbai", lat: 19.076, lng: 72.8777 },
+  { name: "Delhi NCR", lat: 28.6139, lng: 77.209 },
+];
+
+const WHY_CARDS = [
+  {
+    icon: CalendarCheck,
+    title: "Guaranteed Reserved Slot",
+    body: "No more waiting in commercial queues. Book a specific time slot that matches your journey, with arrival access instructions unlocked upon confirmation.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Safety & Verification First",
+    body: "Every residential listing confirms licensed electrical earthing, RCBO trip breaker protection, and cable integrity before being approved.",
+  },
+  {
+    icon: Wallet,
+    title: "Host Monetization",
+    body: "Turn your idle residential EVSE or solar setup into recurring income. Transparent per-kWh rates, parking fees, and automatic Razorpay settlement.",
+  },
+];
+
+const TIER_CARDS = [
+  {
+    icon: Activity,
+    badge: "Tier 1",
+    weight: "Weight: 1.0x",
+    title: "Unverified Community Reports",
+    body: "Any signed-in driver can submit a free report without making a payment. Protected by 24-hr per-user rate limits and duplicate suppression to prevent manipulation.",
+    accent: "text-slate-600 bg-slate-100 border-slate-200",
+  },
+  {
+    icon: Zap,
+    badge: "Tier 2",
+    weight: "Weight: 3.0x",
+    title: "Session-Supported Evidence",
+    body: "Elevated credibility given when reports are linked to a completed booking, verified payment, meter photo, or host confirmation.",
+    accent: "text-brand-700 bg-brand-50 border-brand-200",
+  },
+  {
+    icon: Radio,
+    badge: "Tier 3",
+    weight: "Weight: 5.0x",
+    title: "Trusted Operational Evidence",
+    body: "Live OCPI operator telemetry, official network heartbeat status, or multiple independent non-affiliated verified sessions within the freshness half-life (72h).",
+    accent: "text-blue-700 bg-blue-50 border-blue-200",
+  },
+];
 
 export default function HomePage() {
-  const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCity, setSelectedCity] = useState("Bengaluru");
-  const [isLocating, setIsLocating] = useState(false);
-
-  // Live data states
   const [publicStations, setPublicStations] = useState<PublicStation[]>([]);
   const [homeListings, setHomeListings] = useState<HomeListing[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [activeCity, setActiveCity] = useState(POPULAR_CITIES[0]);
 
   useEffect(() => {
-    async function loadInitialData() {
+    async function loadCityChargers() {
       try {
-        const [stations, listings] = await Promise.all([
-          apiRequest<PublicStation[]>(`/discovery/stations?city=${selectedCity}`),
-          apiRequest<HomeListing[]>(`/marketplace/listings?city=${selectedCity}`),
+        const params = new URLSearchParams({
+          latitude: String(activeCity.lat),
+          longitude: String(activeCity.lng),
+          radius_km: "25",
+        });
+
+        const [stationResult, listingResult] = await Promise.all([
+          apiRequest<PublicStation[]>(`/discovery/stations?${params.toString()}`),
+          apiRequest<HomeListing[]>(
+            `/marketplace/listings?city=${encodeURIComponent(activeCity.name)}`
+          ),
         ]);
-        setPublicStations(stations);
-        setHomeListings(listings);
+
+        setPublicStations(stationResult);
+        setHomeListings(listingResult);
       } catch (err) {
-        console.error("Error loading preview data:", err);
-      } finally {
-        setIsLoading(false);
+        console.error("Home map load error:", err);
+        setPublicStations([]);
+        setHomeListings([]);
       }
     }
-    loadInitialData();
-  }, [selectedCity]);
 
-  const handleUseMyLocation = () => {
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by your browser.");
-      return;
-    }
-    setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setIsLocating(false);
-        router.push(
-          `/public-chargers?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&radius=20`
-        );
-      },
-      (err) => {
-        setIsLocating(false);
-        alert("Location access was denied. You can still search by city or landmark.");
-      }
-    );
-  };
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/public-chargers?q=${encodeURIComponent(searchQuery.trim())}`);
-    } else {
-      router.push(`/public-chargers?city=${selectedCity}`);
-    }
-  };
+    loadCityChargers();
+  }, [activeCity]);
 
   return (
-    <div className="flex flex-col min-h-screen">
-      {/* Hero Section */}
-      <section className="relative bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white pt-16 pb-24 overflow-hidden">
-        {/* Subtle background glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[350px] bg-brand-500/15 blur-[120px] rounded-full pointer-events-none" />
+    <div className="flex flex-col">
+      {/* ============ HERO ============ */}
+      <section className="relative overflow-hidden bg-navy-950 text-white">
+        {/* Decorative gradients */}
+        <div className="absolute inset-0 bg-gradient-to-br from-navy-950 via-navy-900 to-brand-900/60 pointer-events-none" />
+        <div className="absolute -top-32 -right-32 w-96 h-96 bg-brand-500/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center max-w-3xl mx-auto space-y-4">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-950/80 border border-brand-500/30 text-brand-400 text-xs font-semibold tracking-wide uppercase">
-              <Zap className="w-3.5 h-3.5 fill-current" />
-              India&apos;s Next-Gen EV Ecosystem
-            </div>
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-24 text-center">
+          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide uppercase bg-white/10 text-brand-300 border border-brand-400/30 backdrop-blur-sm">
+            <Zap className="w-3.5 h-3.5 fill-current" />
+            India&apos;s Next-Gen EV Ecosystem
+          </span>
 
-            <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white leading-tight">
-              Reliable EV Charging, <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-400 to-emerald-200">
-                Anywhere You Drive.
-              </span>
-            </h1>
+          <h1 className="mt-6 text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-tight max-w-3xl mx-auto">
+            Reliable EV Charging,{" "}
+            <span className="bg-gradient-to-r from-brand-400 to-emerald-300 bg-clip-text text-transparent">
+              Anywhere You Drive.
+            </span>
+          </h1>
 
-            <p className="text-base sm:text-lg text-slate-300 font-normal max-w-2xl mx-auto">
-              Discover verified public fast chargers or reserve dedicated private residential charging points across Indian cities with real-time community confidence scoring.
-            </p>
+          <p className="mt-6 text-base sm:text-lg text-slate-300 max-w-2xl mx-auto leading-relaxed">
+            Discover verified public fast chargers or reserve dedicated private
+            residential charging points across Indian cities with real-time
+            community confidence scoring.
+          </p>
 
-            {/* Main Search Box */}
-            <div className="mt-8 pt-4">
-              <form
-                onSubmit={handleSearchSubmit}
-                className="bg-white p-2 sm:p-2.5 rounded-2xl shadow-2xl flex flex-col sm:flex-row gap-2 max-w-2xl mx-auto border border-slate-100"
-              >
-                <div className="flex-1 flex items-center gap-3 px-3 py-2 text-slate-800">
-                  <Search className="w-5 h-5 text-slate-400 shrink-0" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Find EV Charging Near You (City, Locality, PIN)"
-                    className="w-full bg-transparent text-sm sm:text-base font-medium placeholder-slate-400 focus:outline-none"
-                  />
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleUseMyLocation}
-                    disabled={isLocating}
-                    className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors shrink-0"
-                    title="Use Device GPS"
-                  >
-                    <Navigation className={`w-4 h-4 text-brand-600 ${isLocating ? "animate-spin" : ""}`} />
-                    <span className="hidden sm:inline">Near Me</span>
-                  </button>
-
-                  <button
-                    type="submit"
-                    className="flex-1 sm:flex-initial px-6 py-2.5 rounded-xl text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 shadow-md transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    Explore
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </form>
-
-              {/* City Quick Pills */}
-              <div className="flex items-center justify-center gap-2 mt-4 flex-wrap text-xs text-slate-400">
-                <span>Popular Cities:</span>
-                {["Bengaluru", "Mumbai", "Delhi NCR"].map((city) => (
-                  <button
-                    key={city}
-                    onClick={() => {
-                      setSelectedCity(city);
-                      setSearchQuery("");
-                    }}
-                    className={`px-3 py-1 rounded-full border transition-colors ${
-                      selectedCity === city
-                        ? "bg-brand-500/20 border-brand-400 text-brand-300 font-semibold"
-                        : "border-slate-800 hover:border-slate-700 text-slate-300"
-                    }`}
-                  >
-                    {city}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Dual CTA Actions */}
-            <div className="pt-6 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link
-                href="/public-chargers"
-                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-sm transition-colors"
-              >
-                <Zap className="w-4 h-4 text-brand-400" />
-                Find Public Fast Charger
-              </Link>
-              <Link
-                href="/host/listings/create"
-                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-md transition-colors"
-              >
-                <Home className="w-4 h-4" />
-                Offer Home Charging Bay
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Interactive Map Preview Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-10 mb-16 relative z-20">
-        <div className="bg-white rounded-3xl p-4 sm:p-6 shadow-xl border border-slate-200">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-brand-600" />
-                Live EV Charging Map ({selectedCity})
-              </h2>
-              <p className="text-xs text-slate-500">
-                Green pins denote public fast stations • Blue pins denote verified residential home bays
-              </p>
-            </div>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
-              href="/map"
-              className="text-xs font-semibold text-brand-600 hover:text-brand-700 flex items-center gap-1 self-start sm:self-center"
+              href="/public-chargers"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold shadow-lg shadow-brand-500/25 transition-colors"
             >
-              Expand Full Map View <ArrowRight className="w-3.5 h-3.5" />
+              <MapPin className="w-4 h-4" />
+              Near Me
+            </Link>
+            <Link
+              href="/marketplace"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold border border-white/20 backdrop-blur-sm transition-colors"
+            >
+              Explore
+              <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
 
-          <div className="h-[420px] rounded-2xl overflow-hidden">
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-2 text-sm">
+            <span className="text-slate-400 font-medium">Popular Cities:</span>
+            {POPULAR_CITIES.map((city) => (
+              <button
+                key={city.name}
+                onClick={() => setActiveCity(city)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                  activeCity.name === city.name
+                    ? "bg-brand-500/20 text-brand-300 border border-brand-400/40"
+                    : "bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10"
+                }`}
+              >
+                {city.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ============ DUAL CTA STRIP ============ */}
+      <section className="relative z-10 max-w-5xl mx-auto -mt-12 px-4 sm:px-6 lg:px-8 w-full">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Link
+            href="/public-chargers"
+            className="group flex items-center gap-4 p-5 rounded-2xl bg-white border border-slate-200 shadow-xl shadow-slate-900/5 hover:border-brand-300 hover:shadow-brand-500/10 transition-all"
+          >
+            <div className="w-11 h-11 rounded-xl bg-brand-50 border border-brand-200 flex items-center justify-center text-brand-600 shrink-0">
+              <Zap className="w-5 h-5 fill-current" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-slate-900 text-sm">Find Public Fast Charger</p>
+              <p className="text-xs text-slate-500 truncate">
+                Verified stations near you
+              </p>
+            </div>
+            <ArrowRight className="w-4 h-4 ml-auto text-slate-400 group-hover:text-brand-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+          </Link>
+
+          <Link
+            href="/host/listings/create"
+            className="group flex items-center gap-4 p-5 rounded-2xl bg-white border border-slate-200 shadow-xl shadow-slate-900/5 hover:border-blue-300 hover:shadow-blue-500/10 transition-all"
+          >
+            <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
+              <Home className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-slate-900 text-sm">Offer Home Charging Bay</p>
+              <p className="text-xs text-slate-500 truncate">
+                Monetize your wallbox
+              </p>
+            </div>
+            <ArrowRight className="w-4 h-4 ml-auto text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+          </Link>
+        </div>
+      </section>
+
+      {/* ============ LIVE MAP ============ */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 w-full">
+        <div className="text-center max-w-2xl mx-auto">
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
+            Live EV Charging Map{" "}
+            <span className="text-brand-600">({activeCity.name})</span>
+          </h2>
+          <p className="mt-3 text-sm text-slate-500 flex items-center justify-center gap-4">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block" />
+              Green pins = public fast stations
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
+              Blue pins = verified residential bays
+            </span>
+          </p>
+        </div>
+
+        <div className="mt-8 rounded-2xl overflow-hidden border border-slate-200 shadow-2xl shadow-slate-900/10 bg-white">
+          <div className="h-[420px] sm:h-[480px]">
             <MapView
               publicStations={publicStations}
               homeListings={homeListings}
-              center={
-                selectedCity === "Mumbai"
-                  ? [19.076, 72.8777]
-                  : selectedCity === "Delhi NCR"
-                  ? [28.6139, 77.209]
-                  : [12.9716, 77.5946]
-              }
+              center={[activeCity.lat, activeCity.lng]}
               zoom={12}
+              className="w-full h-full"
             />
           </div>
         </div>
+
+        <div className="mt-6 text-center">
+          <Link
+            href="/map"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-navy-900 hover:bg-navy-800 text-white text-sm font-semibold shadow-lg transition-colors"
+          >
+            <MapPin className="w-4 h-4" />
+            Expand Full Map View
+          </Link>
+        </div>
       </section>
 
-      {/* Priority 2: Home Charging Marketplace Explained */}
-      <section className="bg-slate-50 py-16 border-t border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-12">
-            <span className="text-xs font-bold text-brand-600 tracking-wider uppercase">
+      {/* ============ WHY MARKETPLACE ============ */}
+      <section className="bg-white border-y border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+          <div className="text-center max-w-2xl mx-auto">
+            <span className="text-xs font-bold uppercase tracking-widest text-brand-600">
               The Peer-to-Peer Revolution
             </span>
-            <h2 className="text-3xl font-extrabold text-slate-900 mt-2">
+            <h2 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
               Why Home Charging Marketplace?
             </h2>
-            <p className="text-slate-600 mt-3 text-sm sm:text-base">
-              Public chargers are often congested or occupied. ChargeCircle allows EV owners with certified wallboxes to open their driveways to fellow EV drivers for guaranteed charging slots.
+            <p className="mt-4 text-slate-500 leading-relaxed">
+              Public chargers are often congested or occupied. ChargeCircle
+              allows EV owners with certified wallboxes to open their driveways
+              to fellow EV drivers for guaranteed charging slots.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                1
+          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
+            {WHY_CARDS.map((card, idx) => (
+              <div
+                key={card.title}
+                className="relative p-6 rounded-2xl bg-slate-50 border border-slate-200 hover:border-brand-300 hover:shadow-lg hover:shadow-brand-500/5 transition-all"
+              >
+                <span className="absolute top-5 right-6 text-4xl font-black text-slate-200 select-none">
+                  {idx + 1}
+                </span>
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-brand-600 to-emerald-400 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
+                  <card.icon className="w-5 h-5" />
+                </div>
+                <h3 className="mt-4 text-lg font-bold text-slate-900">{card.title}</h3>
+                <p className="mt-2 text-sm text-slate-500 leading-relaxed">{card.body}</p>
               </div>
-              <h3 className="text-lg font-bold text-slate-900">Guaranteed Reserved Slot</h3>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                No more waiting in commercial queues. Book a specific time slot that matches your journey, with arrival access instructions unlocked upon confirmation.
-              </p>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                2
-              </div>
-              <h3 className="text-lg font-bold text-slate-900">Safety & Verification First</h3>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Every residential listing confirms licensed electrical earthing, RCBO trip breaker protection, and cable integrity before being approved.
-              </p>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
-                3
-              </div>
-              <h3 className="text-lg font-bold text-slate-900">Host Monetization</h3>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Turn your idle residential EVSE or solar setup into recurring income. Transparent per-kWh rates, parking fees, and automatic Razorpay settlement.
-              </p>
-            </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* Priority 3: Charger Trust & Reliability System Explained */}
-      <section className="bg-white py-16 border-t border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-12">
-            <span className="text-xs font-bold text-brand-600 tracking-wider uppercase">
+      {/* ============ RELIABILITY ENGINE ============ */}
+      <section className="bg-slate-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+          <div className="text-center max-w-2xl mx-auto">
+            <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500">
+              <Gauge className="w-4 h-4 text-brand-600" />
               Algorithmic Integrity
             </span>
-            <h2 className="text-3xl font-extrabold text-slate-900 mt-2">
+            <h2 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
               How Charger Reliability Is Calculated
             </h2>
-            <p className="text-slate-600 mt-3 text-sm sm:text-base">
-              A successful payment does not automatically prove electricity was delivered. We separate payment status from electrical delivery through a rigorous three-tier evidence engine.
+            <p className="mt-4 text-slate-500 leading-relaxed">
+              A successful payment does not automatically prove electricity was
+              delivered. We separate payment status from electrical delivery
+              through a rigorous three-tier evidence engine.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold px-2.5 py-1 rounded bg-slate-200 text-slate-800">
-                  Tier 1
-                </span>
-                <span className="text-xs text-slate-500">Weight: 1.0x</span>
+          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
+            {TIER_CARDS.map((tier) => (
+              <div
+                key={tier.badge}
+                className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${tier.accent}`}
+                  >
+                    <tier.icon className="w-3.5 h-3.5" />
+                    {tier.badge}
+                  </span>
+                  <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-md">
+                    {tier.weight}
+                  </span>
+                </div>
+                <h3 className="mt-4 text-base font-bold text-slate-900">{tier.title}</h3>
+                <p className="mt-2 text-sm text-slate-500 leading-relaxed">{tier.body}</p>
               </div>
-              <h4 className="text-base font-bold text-slate-900">Unverified Community Reports</h4>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Any signed-in driver can submit a free report without making a payment. Protected by 24-hr per-user rate limits and duplicate suppression to prevent manipulation.
-              </p>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-brand-50/50 border border-brand-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold px-2.5 py-1 rounded bg-brand-200 text-brand-900">
-                  Tier 2
-                </span>
-                <span className="text-xs text-brand-700 font-semibold">Weight: 3.0x</span>
-              </div>
-              <h4 className="text-base font-bold text-slate-900">Session-Supported Evidence</h4>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Elevated credibility given when reports are linked to a completed booking, verified payment, meter photo, or host confirmation.
-              </p>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-purple-50/50 border border-purple-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold px-2.5 py-1 rounded bg-purple-200 text-purple-900">
-                  Tier 3
-                </span>
-                <span className="text-xs text-purple-700 font-semibold">Weight: 5.0x</span>
-              </div>
-              <h4 className="text-base font-bold text-slate-900">Trusted Operational Evidence</h4>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Live OCPI operator telemetry, official network heartbeat status, or multiple independent non-affiliated verified sessions within the freshness half-life (72h).
-              </p>
-            </div>
+            ))}
           </div>
         </div>
       </section>
